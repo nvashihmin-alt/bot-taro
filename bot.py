@@ -16,23 +16,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== КОНФИГУРАЦИЯ =====================
-TOKEN = os.getenv("8865475827:AAFxiCSnni7c8dF8uckMprS8_cm1Kf1jrGY")
-OPENROUTER_API_KEY = os.getenv("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")
-
-if not TOKEN:
-    raise ValueError("❌ TELEGRAM_TOKEN не найден в переменных окружения!")
-if not OPENROUTER_API_KEY:
-    raise ValueError("❌ OPENROUTER_API_KEY не найден в переменных окружения!")
+# Переменные объявлены как None, будут заполнены в main()
+TOKEN = None
+OPENROUTER_API_KEY = None
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DB = "tarot.db"
 FREE_LIMIT = 10
-
-bot = Bot(
-    token=TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
-dp = Dispatcher()
 
 # ===================== ПОЛНАЯ КОЛОДА ТАРО =====================
 MAJOR_ARCANA = [
@@ -756,6 +746,27 @@ async def premium(message: Message):
 
 # ===================== ГЛАВНАЯ ФУНКЦИЯ =====================
 async def main():
+    global TOKEN, OPENROUTER_API_KEY
+    
+    # Читаем переменные окружения ВНУТРИ функции
+    TOKEN = os.getenv("TELEGRAM_TOKEN")
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    
+    if not TOKEN:
+        logger.error("❌ TELEGRAM_TOKEN не найден в переменных окружения!")
+        return
+    if not OPENROUTER_API_KEY:
+        logger.error("❌ OPENROUTER_API_KEY не найден в переменных окружения!")
+        return
+    
+    # Инициализируем бота
+    global bot, dp
+    bot = Bot(
+        token=TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
+    dp = Dispatcher()
+    
     await init_db()
     logger.info("🤖 Бот Таро запущен!")
     logger.info(f"📊 Доступно раскладов: {len(SPREADS)}")
