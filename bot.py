@@ -16,10 +16,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== КОНФИГУРАЦИЯ =====================
-# Переменные объявлены как None, будут заполнены в main()
 TOKEN = None
 OPENROUTER_API_KEY = None
-
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DB = "tarot.db"
 FREE_LIMIT = 10
@@ -471,284 +469,282 @@ async def generate_horoscope(birth_date: str, gender: str):
         return f"🌟 Сегодня отличный день для новых начинаний, {zodiac}!"
 
 # ===================== ОБРАБОТЧИКИ =====================
-@dp.message(Command("start"))
-async def start(message: Message):
-    await init_db()
-    user_id = message.from_user.id
-    _, _, birth_date, gender, registered = await get_user(user_id)
+# Обработчики теперь используют функцию-замыкание, чтобы получить доступ к dp
+def register_handlers(dp: Dispatcher):
+    """Регистрирует все обработчики в диспетчере"""
     
-    if registered and birth_date and gender:
-        await show_main_menu(message)
-    else:
-        user_state[user_id] = {"step": "birth_date"}
+    @dp.message(Command("start"))
+    async def start(message: Message):
+        await init_db()
+        user_id = message.from_user.id
+        _, _, birth_date, gender, registered = await get_user(user_id)
+        
+        if registered and birth_date and gender:
+            await show_main_menu(message)
+        else:
+            user_state[user_id] = {"step": "birth_date"}
+            await message.answer(
+                "🔮 <b>Добро пожаловать в Таро-бот!</b>\n\n"
+                "Для персонализированных раскладов и гороскопов мне нужны ваши данные.\n\n"
+                "📅 Введите вашу <b>дату рождения</b> в формате <b>ДД.ММ</b> (например, 15.06):",
+                parse_mode="HTML"
+            )
+
+    async def show_main_menu(message: Message):
+        user_id = message.from_user.id
+        _, _, birth_date, gender, _ = await get_user(user_id)
+        
+        try:
+            day, month = map(int, birth_date.split('.'))
+            zodiac = get_zodiac_sign(day, month)
+            life_path = get_life_path_number(birth_date)
+            gender_emoji = get_gender_emoji(gender)
+        except:
+            zodiac = "⭐"
+            life_path = "?"
+            gender_emoji = "🧑"
+        
         await message.answer(
-            "🔮 <b>Добро пожаловать в Таро-бот!</b>\n\n"
-            "Для персонализированных раскладов и гороскопов мне нужны ваши данные.\n\n"
-            "📅 Введите вашу <b>дату рождения</b> в формате <b>ДД.ММ</b> (например, 15.06):",
+            f"🔮 <b>Главное меню</b>\n\n"
+            f"{gender_emoji} {gender} | {zodiac}\n"
+            f"🔢 Число жизненного пути: {life_path}\n\n"
+            f"Выбери тип расклада:\n"
+            f"• ⭐ <b>Карта дня</b> — быстрый совет\n"
+            f"• 🔮 <b>3 карты</b> — прошлое-настоящее-будущее\n"
+            f"• ⚖️ <b>5 карт</b> — выбор пути\n"
+            f"• ❤️ <b>7 карт</b> — отношения\n"
+            f"• ⚔️ <b>Кельтский крест</b> — полный расклад\n\n"
+            f"• ♈ <b>Гороскоп</b> — персональный прогноз\n"
+            f"• 🔢 <b>Нумерология</b> — полный анализ чисел\n\n"
+            f"📊 Бесплатно: {FREE_LIMIT} раскладов/день\n"
+            f"💎 Премиум: без ограничений",
+            reply_markup=main_keyboard,
             parse_mode="HTML"
         )
 
-async def show_main_menu(message: Message):
-    user_id = message.from_user.id
-    _, _, birth_date, gender, _ = await get_user(user_id)
-    
-    try:
-        day, month = map(int, birth_date.split('.'))
-        zodiac = get_zodiac_sign(day, month)
-        life_path = get_life_path_number(birth_date)
-        gender_emoji = get_gender_emoji(gender)
-    except:
-        zodiac = "⭐"
-        life_path = "?"
-        gender_emoji = "🧑"
-    
-    await message.answer(
-        f"🔮 <b>Главное меню</b>\n\n"
-        f"{gender_emoji} {gender} | {zodiac}\n"
-        f"🔢 Число жизненного пути: {life_path}\n\n"
-        f"Выбери тип расклада:\n"
-        f"• ⭐ <b>Карта дня</b> — быстрый совет\n"
-        f"• 🔮 <b>3 карты</b> — прошлое-настоящее-будущее\n"
-        f"• ⚖️ <b>5 карт</b> — выбор пути\n"
-        f"• ❤️ <b>7 карт</b> — отношения\n"
-        f"• ⚔️ <b>Кельтский крест</b> — полный расклад\n\n"
-        f"• ♈ <b>Гороскоп</b> — персональный прогноз\n"
-        f"• 🔢 <b>Нумерология</b> — полный анализ чисел\n\n"
-        f"📊 Бесплатно: {FREE_LIMIT} раскладов/день\n"
-        f"💎 Премиум: без ограничений",
-        reply_markup=main_keyboard,
-        parse_mode="HTML"
-    )
-
-async def check_limit(user_id: int):
-    is_premium, req, _, _, _ = await get_user(user_id)
-    if is_premium:
+    async def check_limit(user_id: int):
+        is_premium, req, _, _, _ = await get_user(user_id)
+        if is_premium:
+            return True, req
+        if req >= FREE_LIMIT:
+            return False, req
         return True, req
-    if req >= FREE_LIMIT:
-        return False, req
-    return True, req
 
-# ===================== РАСКЛАДЫ =====================
-@dp.message(F.text.in_(["⭐ Карта дня", "🔮 3 карты", "⚖️ 5 карт", "❤️ 7 карт", "⚔️ Кельтский крест"]))
-async def handle_spread(message: Message):
-    user_id = message.from_user.id
-    
-    spread_map = {
-        "⭐ Карта дня": "1_карта",
-        "🔮 3 карты": "3_карты",
-        "⚖️ 5 карт": "5_карт",
-        "❤️ 7 карт": "7_карт",
-        "⚔️ Кельтский крест": "10_карт"
-    }
-    spread_type = spread_map[message.text]
-    
-    allowed, req = await check_limit(user_id)
-    if not allowed:
-        await message.answer("❌ Лимит исчерпан. Купи премиум 💎")
-        return
-    
-    spread = SPREADS[spread_type]
-    wait_msg = await message.answer(f"{spread['emoji']} Делаю расклад <b>{spread['name']}</b>...", parse_mode="HTML")
-    
-    _, _, birth_date, gender, _ = await get_user(user_id)
-    
-    cards = make_spread(spread_type)
-    interpretation = await generate_interpretation(cards, spread_type, birth_date, gender)
-    await update_requests(user_id, req + 1)
-    
-    await wait_msg.delete()
-    
-    cards_list = []
-    for i, card_info in enumerate(cards):
-        status = "🔄" if card_info["is_reversed"] else "⬆️"
+    @dp.message(F.text.in_(["⭐ Карта дня", "🔮 3 карты", "⚖️ 5 карт", "❤️ 7 карт", "⚔️ Кельтский крест"]))
+    async def handle_spread(message: Message):
+        user_id = message.from_user.id
         
-        suit_emoji = ""
-        for suit, emoji in SUITS.items():
-            if suit in card_info["name"]:
-                suit_emoji = emoji.split()[0]
-                break
+        spread_map = {
+            "⭐ Карта дня": "1_карта",
+            "🔮 3 карты": "3_карты",
+            "⚖️ 5 карт": "5_карт",
+            "❤️ 7 карт": "7_карт",
+            "⚔️ Кельтский крест": "10_карт"
+        }
+        spread_type = spread_map[message.text]
         
-        cards_list.append(f"{status} {spread['positions'][i]}: <b>{card_info['name']}</b> {suit_emoji}")
-    
-    advice = get_random_advice()
-    
-    response_text = (
-        f"{spread['emoji']} <b>{spread['name']}</b>\n\n"
-        f"<b>Выпавшие карты:</b>\n{chr(10).join(cards_list)}\n\n"
-        f"<b>Толкование:</b>\n{interpretation}\n\n"
-        f"💫 <b>Совет дня:</b>\n{advice}\n\n"
-        f"📊 Использовано: {req + 1}/{FREE_LIMIT}"
-    )
-    
-    await message.answer(response_text, parse_mode="HTML")
-
-# ===================== ГОРОСКОП =====================
-@dp.message(F.text == "♈ Гороскоп")
-async def handle_horoscope(message: Message):
-    user_id = message.from_user.id
-    _, _, birth_date, gender, _ = await get_user(user_id)
-    
-    if not birth_date or not gender:
-        await message.answer("❌ Пожалуйста, перезапустите бота командой /start")
-        return
-    
-    wait_msg = await message.answer("♈ Составляю ваш персональный гороскоп...")
-    horoscope_text = await generate_horoscope(birth_date, gender)
-    await wait_msg.delete()
-    
-    try:
-        day, month = map(int, birth_date.split('.'))
-        zodiac = get_zodiac_sign(day, month)
-        life_path = get_life_path_number(birth_date)
-        gender_emoji = get_gender_emoji(gender)
-    except:
-        zodiac = "⭐"
-        life_path = "?"
-        gender_emoji = "🧑"
-    
-    await message.answer(
-        f"♈ <b>Ваш гороскоп</b>\n\n"
-        f"📅 Дата рождения: {birth_date}\n"
-        f"⭐ Знак зодиака: {zodiac}\n"
-        f"🔢 Число жизненного пути: {life_path}\n"
-        f"👤 Пол: {gender_emoji} {gender}\n\n"
-        f"{horoscope_text}\n\n"
-        f"💫 {get_random_advice()}",
-        parse_mode="HTML"
-    )
-
-# ===================== НУМЕРОЛОГИЯ =====================
-@dp.message(F.text == "🔢 Нумерология")
-async def handle_numerology(message: Message):
-    user_id = message.from_user.id
-    _, _, birth_date, gender, _ = await get_user(user_id)
-    
-    if not birth_date:
-        await message.answer("❌ Пожалуйста, перезапустите бота командой /start")
-        return
-    
-    try:
-        day, month = map(int, birth_date.split('.'))
+        allowed, req = await check_limit(user_id)
+        if not allowed:
+            await message.answer("❌ Лимит исчерпан. Купи премиум 💎")
+            return
         
-        life_path = get_life_path_number(birth_date)
-        destiny = get_destiny_number(birth_date)
-        soul_urge = get_soul_urge_number(birth_date)
-        birth_day = get_birth_day_number(day)
-        personality = get_personality_number(birth_date)
-        zodiac = get_zodiac_sign(day, month)
-        gender_emoji = get_gender_emoji(gender)
+        spread = SPREADS[spread_type]
+        wait_msg = await message.answer(f"{spread['emoji']} Делаю расклад <b>{spread['name']}</b>...", parse_mode="HTML")
         
-        numerology_text = f"""
-🔢 <b>Ваша нумерологическая карта</b>
-
-👤 {gender_emoji} {gender} | {zodiac}
-📅 Дата рождения: {birth_date}
-
-<u>Основные числа:</u>
-
-<b>1. Число жизненного пути: {life_path}</b>
-{get_numerology_interpretation(life_path)}
-Это ваше главное число, определяющее жизненный путь и предназначение.
-
-<b>2. Число судьбы: {destiny}</b>
-{get_numerology_interpretation(destiny)}
-Показывает, какие таланты и возможности даны вам от рождения.
-
-<b>3. Число душевного порыва: {soul_urge}</b>
-{get_numerology_interpretation(soul_urge)}
-Отражает ваши истинные желания и мотивации.
-
-<b>4. Число личности: {personality}</b>
-{get_numerology_interpretation(personality)}
-Как вас воспринимают окружающие.
-
-<b>5. Число дня рождения: {birth_day}</b>
-{get_numerology_interpretation(birth_day)}
-Ваш характер и особенности поведения.
-
-<u>Совет:</u>
-✨ Используйте эти знания для понимания себя и своего пути.
-"""
+        _, _, birth_date, gender, _ = await get_user(user_id)
         
-        await message.answer(numerology_text, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Ошибка в нумерологии: {e}")
-        await message.answer("❌ Ошибка при расчете нумерологических данных. Попробуйте позже.")
+        cards = make_spread(spread_type)
+        interpretation = await generate_interpretation(cards, spread_type, birth_date, gender)
+        await update_requests(user_id, req + 1)
+        
+        await wait_msg.delete()
+        
+        cards_list = []
+        for i, card_info in enumerate(cards):
+            status = "🔄" if card_info["is_reversed"] else "⬆️"
+            
+            suit_emoji = ""
+            for suit, emoji in SUITS.items():
+                if suit in card_info["name"]:
+                    suit_emoji = emoji.split()[0]
+                    break
+            
+            cards_list.append(f"{status} {spread['positions'][i]}: <b>{card_info['name']}</b> {suit_emoji}")
+        
+        advice = get_random_advice()
+        
+        response_text = (
+            f"{spread['emoji']} <b>{spread['name']}</b>\n\n"
+            f"<b>Выпавшие карты:</b>\n{chr(10).join(cards_list)}\n\n"
+            f"<b>Толкование:</b>\n{interpretation}\n\n"
+            f"💫 <b>Совет дня:</b>\n{advice}\n\n"
+            f"📊 Использовано: {req + 1}/{FREE_LIMIT}"
+        )
+        
+        await message.answer(response_text, parse_mode="HTML")
 
-# ===================== ОБРАБОТКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ =====================
-@dp.message()
-async def handle_user_data(message: Message):
-    user_id = message.from_user.id
-    step = user_state.get(user_id, {}).get("step")
-    
-    if step == "birth_date":
-        text = message.text.strip()
+    @dp.message(F.text == "♈ Гороскоп")
+    async def handle_horoscope(message: Message):
+        user_id = message.from_user.id
+        _, _, birth_date, gender, _ = await get_user(user_id)
+        
+        if not birth_date or not gender:
+            await message.answer("❌ Пожалуйста, перезапустите бота командой /start")
+            return
+        
+        wait_msg = await message.answer("♈ Составляю ваш персональный гороскоп...")
+        horoscope_text = await generate_horoscope(birth_date, gender)
+        await wait_msg.delete()
+        
         try:
-            day, month = map(int, text.split('.'))
-            if 1 <= day <= 31 and 1 <= month <= 12:
-                user_state[user_id] = {
-                    "step": "gender",
-                    "birth_date": text
-                }
+            day, month = map(int, birth_date.split('.'))
+            zodiac = get_zodiac_sign(day, month)
+            life_path = get_life_path_number(birth_date)
+            gender_emoji = get_gender_emoji(gender)
+        except:
+            zodiac = "⭐"
+            life_path = "?"
+            gender_emoji = "🧑"
+        
+        await message.answer(
+            f"♈ <b>Ваш гороскоп</b>\n\n"
+            f"📅 Дата рождения: {birth_date}\n"
+            f"⭐ Знак зодиака: {zodiac}\n"
+            f"🔢 Число жизненного пути: {life_path}\n"
+            f"👤 Пол: {gender_emoji} {gender}\n\n"
+            f"{horoscope_text}\n\n"
+            f"💫 {get_random_advice()}",
+            parse_mode="HTML"
+        )
+
+    @dp.message(F.text == "🔢 Нумерология")
+    async def handle_numerology(message: Message):
+        user_id = message.from_user.id
+        _, _, birth_date, gender, _ = await get_user(user_id)
+        
+        if not birth_date:
+            await message.answer("❌ Пожалуйста, перезапустите бота командой /start")
+            return
+        
+        try:
+            day, month = map(int, birth_date.split('.'))
+            
+            life_path = get_life_path_number(birth_date)
+            destiny = get_destiny_number(birth_date)
+            soul_urge = get_soul_urge_number(birth_date)
+            birth_day = get_birth_day_number(day)
+            personality = get_personality_number(birth_date)
+            zodiac = get_zodiac_sign(day, month)
+            gender_emoji = get_gender_emoji(gender)
+            
+            numerology_text = f"""
+    🔢 <b>Ваша нумерологическая карта</b>
+
+    👤 {gender_emoji} {gender} | {zodiac}
+    📅 Дата рождения: {birth_date}
+
+    <u>Основные числа:</u>
+
+    <b>1. Число жизненного пути: {life_path}</b>
+    {get_numerology_interpretation(life_path)}
+    Это ваше главное число, определяющее жизненный путь и предназначение.
+
+    <b>2. Число судьбы: {destiny}</b>
+    {get_numerology_interpretation(destiny)}
+    Показывает, какие таланты и возможности даны вам от рождения.
+
+    <b>3. Число душевного порыва: {soul_urge}</b>
+    {get_numerology_interpretation(soul_urge)}
+    Отражает ваши истинные желания и мотивации.
+
+    <b>4. Число личности: {personality}</b>
+    {get_numerology_interpretation(personality)}
+    Как вас воспринимают окружающие.
+
+    <b>5. Число дня рождения: {birth_day}</b>
+    {get_numerology_interpretation(birth_day)}
+    Ваш характер и особенности поведения.
+
+    <u>Совет:</u>
+    ✨ Используйте эти знания для понимания себя и своего пути.
+    """
+            
+            await message.answer(numerology_text, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Ошибка в нумерологии: {e}")
+            await message.answer("❌ Ошибка при расчете нумерологических данных. Попробуйте позже.")
+
+    @dp.message()
+    async def handle_user_data(message: Message):
+        user_id = message.from_user.id
+        step = user_state.get(user_id, {}).get("step")
+        
+        if step == "birth_date":
+            text = message.text.strip()
+            try:
+                day, month = map(int, text.split('.'))
+                if 1 <= day <= 31 and 1 <= month <= 12:
+                    user_state[user_id] = {
+                        "step": "gender",
+                        "birth_date": text
+                    }
+                    await message.answer(
+                        "✅ Дата рождения сохранена!\n\n"
+                        "Теперь выберите ваш <b>пол</b>:",
+                        parse_mode="HTML",
+                        reply_markup=gender_keyboard
+                    )
+                else:
+                    await message.answer("❌ Неверный формат. Введите дату в формате ДД.ММ (например, 15.06):")
+            except:
+                await message.answer("❌ Неверный формат. Введите дату в формате ДД.ММ (например, 15.06):")
+        
+        elif step == "gender":
+            gender_map = {
+                "👨 Мужской": "Мужской",
+                "👩 Женский": "Женский"
+            }
+            
+            if message.text in gender_map:
+                gender = gender_map[message.text]
+                birth_date = user_state[user_id]["birth_date"]
+                
+                await save_user_data(user_id, birth_date, gender)
+                user_state[user_id] = {}
+                
                 await message.answer(
-                    "✅ Дата рождения сохранена!\n\n"
-                    "Теперь выберите ваш <b>пол</b>:",
-                    parse_mode="HTML",
+                    f"✅ Данные сохранены!\n"
+                    f"📅 Дата рождения: {birth_date}\n"
+                    f"👤 Пол: {gender}\n\n"
+                    f"🔮 Добро пожаловать в мир Таро!",
+                    reply_markup=main_keyboard
+                )
+                
+                await show_main_menu(message)
+            else:
+                await message.answer(
+                    "❌ Пожалуйста, выберите пол, используя кнопки ниже:",
                     reply_markup=gender_keyboard
                 )
-            else:
-                await message.answer("❌ Неверный формат. Введите дату в формате ДД.ММ (например, 15.06):")
-        except:
-            await message.answer("❌ Неверный формат. Введите дату в формате ДД.ММ (например, 15.06):")
-    
-    elif step == "gender":
-        gender_map = {
-            "👨 Мужской": "Мужской",
-            "👩 Женский": "Женский"
-        }
-        
-        if message.text in gender_map:
-            gender = gender_map[message.text]
-            birth_date = user_state[user_id]["birth_date"]
-            
-            await save_user_data(user_id, birth_date, gender)
-            user_state[user_id] = {}
-            
-            await message.answer(
-                f"✅ Данные сохранены!\n"
-                f"📅 Дата рождения: {birth_date}\n"
-                f"👤 Пол: {gender}\n\n"
-                f"🔮 Добро пожаловать в мир Таро!",
-                reply_markup=main_keyboard
-            )
-            
-            await show_main_menu(message)
-        else:
-            await message.answer(
-                "❌ Пожалуйста, выберите пол, используя кнопки ниже:",
-                reply_markup=gender_keyboard
-            )
 
-# ===================== ПРЕМИУМ =====================
-@dp.message(F.text == "💎 Премиум")
-async def premium(message: Message):
-    await message.answer(
-        "💎 <b>Премиум режим</b>\n\n"
-        "✔ Безлимитные расклады\n"
-        "✔ Глубокие трактовки всех 78 карт\n"
-        "✔ Перевернутые карты в раскладах\n"
-        "✔ Персональный гороскоп с учетом пола\n"
-        "✔ Полная нумерологическая карта\n"
-        "✔ Приоритетные ответы от ИИ\n\n"
-        "💰 Цена: 199₽/месяц\n"
-        "👉 Для подключения напишите @your_support"
-    )
+    @dp.message(F.text == "💎 Премиум")
+    async def premium(message: Message):
+        await message.answer(
+            "💎 <b>Премиум режим</b>\n\n"
+            "✔ Безлимитные расклады\n"
+            "✔ Глубокие трактовки всех 78 карт\n"
+            "✔ Перевернутые карты в раскладах\n"
+            "✔ Персональный гороскоп с учетом пола\n"
+            "✔ Полная нумерологическая карта\n"
+            "✔ Приоритетные ответы от ИИ\n\n"
+            "💰 Цена: 199₽/месяц\n"
+            "👉 Для подключения напишите @your_support"
+        )
 
 # ===================== ГЛАВНАЯ ФУНКЦИЯ =====================
 async def main():
     global TOKEN, OPENROUTER_API_KEY
     
-    # Читаем переменные окружения ВНУТРИ функции
     TOKEN = os.getenv("TELEGRAM_TOKEN")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
     
@@ -759,19 +755,21 @@ async def main():
         logger.error("❌ OPENROUTER_API_KEY не найден в переменных окружения!")
         return
     
-    # Инициализируем бота
-    global bot, dp
     bot = Bot(
         token=TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher()
     
+    # Регистрируем обработчики
+    register_handlers(dp)
+    
     await init_db()
     logger.info("🤖 Бот Таро запущен!")
     logger.info(f"📊 Доступно раскладов: {len(SPREADS)}")
     logger.info(f"🃏 Колода: {len(ALL_CARDS)} карт")
     logger.info(f"🔄 Перевернутые карты: {REVERSED_CHANCE*100}%")
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
