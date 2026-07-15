@@ -1,9 +1,9 @@
 import os
 import asyncio
+import threading
 import logging
 from flask import Flask, jsonify
 from bot import main
-import threading
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,28 +12,24 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return jsonify({
-        "status": "running",
-        "message": "Tarot Bot is active! 🤖"
-    })
+    return jsonify({"status": "running", "message": "Tarot Bot is active! 🤖"})
 
 @app.route('/health')
 def health():
-    return jsonify({
-        "status": "healthy",
-        "service": "tarot-bot"
-    })
+    return jsonify({"status": "healthy"})
 
 def run_bot():
-    """Запускает основного бота в отдельном потоке"""
+    """Запускает бота в отдельном цикле событий"""
     try:
         logger.info("🔄 Запуск бота Таро...")
-        # Создаем новый цикл событий для этого потока
+        # Создаем новый цикл для этого потока
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(main())
     except Exception as e:
         logger.error(f"❌ Ошибка в боте: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     # Запускаем бота в фоновом потоке
