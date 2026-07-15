@@ -770,7 +770,6 @@ async def main():
     logger.info(f"🃏 Колода: {len(ALL_CARDS)} карт")
     logger.info(f"🔄 Перевернутые карты: {REVERSED_CHANCE*100}%")
     
-    await dp.start_polling(bot)
-
+    await dp.start_polling(bot, handle_signals=False)
 if __name__ == "__main__":
     asyncio.run(main())
